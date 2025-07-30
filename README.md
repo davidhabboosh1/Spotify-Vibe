@@ -1,4 +1,4 @@
-Written by David Habboosh.
+Written by David Habboosh
 
 **Acknowledgements**
 * Valentina Paredes (songwriter) for writing detailed analysis of songs for model fine-tuning.
