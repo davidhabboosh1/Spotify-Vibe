@@ -12,7 +12,6 @@ import urllib.parse
 import time
 import datetime
 import chromadb
-import json
 from lyricsgenius import Genius
 from process_csv import format_single
 import sentence_transformers
@@ -22,6 +21,8 @@ from tqdm import tqdm
 import warnings
 import logging
 from langdetect import detect
+import time
+import webbrowser
 
 warnings.filterwarnings("ignore")
 logging.getLogger("tenacity").setLevel(logging.CRITICAL)
@@ -39,8 +40,6 @@ if not os.path.exists(SESSION_KEY_FILE):
     url = skg.get_web_auth_url()
 
     print(f"Please authorize this script to access your account: {url}\n")
-    import time
-    import webbrowser
 
     webbrowser.open(url)
 
@@ -93,14 +92,6 @@ def serialize(track):
 if not os.path.exists('last_processed_date.txt'):
     with open('last_processed_date.txt', 'w') as f:
         f.write('0')
-        
-lock = Lock()
-def serialize_and_write(track, f):
-    row = serialize(track)
-    line = json.dumps(row) + '\n'
-    with lock:
-        f.write(line)
-    return True
 
 with open('last_processed_date.txt', 'r') as f:
     last_processed_date = f.read().strip()
