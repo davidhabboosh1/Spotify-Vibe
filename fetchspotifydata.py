@@ -30,11 +30,11 @@ logging.getLogger().setLevel(logging.CRITICAL)
 
 load_dotenv('spotvars.env')
 
-API_KEY = os.getenv('API_KEY')
-API_SECRET = os.getenv('API_SECRET')
+LASTFM_KEY = os.getenv('LASTFM_KEY')
+LASTFM_SECRET = os.getenv('LASTFM_SECRET')
 
 SESSION_KEY_FILE = 'session_key'
-network = pylast.LastFMNetwork(API_KEY, API_SECRET)
+network = pylast.LastFMNetwork(LASTFM_KEY, LASTFM_SECRET)
 if not os.path.exists(SESSION_KEY_FILE):
     skg = pylast.SessionKeyGenerator(network)
     url = skg.get_web_auth_url()
