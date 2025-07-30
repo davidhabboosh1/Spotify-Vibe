@@ -46,7 +46,7 @@ if not os.path.exists(SESSION_KEY_FILE):
     while True:
         try:
             session_key = skg.get_web_auth_session_key(url)
-            test_network = pylast.LastFMNetwork(API_KEY, API_SECRET, session_key)
+            test_network = pylast.LastFMNetwork(LASTFM_KEY, LASTFM_SECRET, session_key)
             test_user = test_network.get_authenticated_user()
             
             with open(SESSION_KEY_FILE, "w") as f:
