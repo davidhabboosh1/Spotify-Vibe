@@ -3,7 +3,6 @@ spotvars.env
 last_processed_date.txt
 session_key
 .cache
-chromadb_data
 .vscode
 __pycache__
 models/

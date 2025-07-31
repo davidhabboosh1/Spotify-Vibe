@@ -16,7 +16,7 @@ from lyricsgenius import Genius
 from process_csv import format_single
 import sentence_transformers
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock, Semaphore
+from threading import Semaphore
 from tqdm import tqdm
 import warnings
 import logging
@@ -24,41 +24,41 @@ from langdetect import detect
 import time
 import webbrowser
 
-warnings.filterwarnings("ignore")
-logging.getLogger("tenacity").setLevel(logging.CRITICAL)
-logging.getLogger().setLevel(logging.CRITICAL)
+def set_logger():
+    warnings.filterwarnings("ignore")
+    logging.getLogger("tenacity").setLevel(logging.CRITICAL)
+    logging.getLogger().setLevel(logging.CRITICAL)
 
-load_dotenv('spotvars.env')
+def init_lastfm_session():
+    LASTFM_KEY = os.getenv('LASTFM_KEY')
+    LASTFM_SECRET = os.getenv('LASTFM_SECRET')
 
-LASTFM_KEY = os.getenv('LASTFM_KEY')
-LASTFM_SECRET = os.getenv('LASTFM_SECRET')
+    SESSION_KEY_FILE = 'session_key'
+    network = pylast.LastFMNetwork(LASTFM_KEY, LASTFM_SECRET)
+    if not os.path.exists(SESSION_KEY_FILE):
+        skg = pylast.SessionKeyGenerator(network)
+        url = skg.get_web_auth_url()
 
-SESSION_KEY_FILE = 'session_key'
-network = pylast.LastFMNetwork(LASTFM_KEY, LASTFM_SECRET)
-if not os.path.exists(SESSION_KEY_FILE):
-    skg = pylast.SessionKeyGenerator(network)
-    url = skg.get_web_auth_url()
+        print(f"Please authorize this script to access your account: {url}\n")
 
-    print(f"Please authorize this script to access your account: {url}\n")
+        webbrowser.open(url)
 
-    webbrowser.open(url)
+        while True:
+            try:
+                session_key = skg.get_web_auth_session_key(url)
+                test_network = pylast.LastFMNetwork(LASTFM_KEY, LASTFM_SECRET, session_key)
+                test_user = test_network.get_authenticated_user()
+                
+                with open(SESSION_KEY_FILE, "w") as f:
+                    f.write(session_key)
+                break
+            except pylast.WSError:
+                time.sleep(1)
+    else:
+        session_key = open(SESSION_KEY_FILE).read()
 
-    while True:
-        try:
-            session_key = skg.get_web_auth_session_key(url)
-            test_network = pylast.LastFMNetwork(LASTFM_KEY, LASTFM_SECRET, session_key)
-            test_user = test_network.get_authenticated_user()
-            
-            with open(SESSION_KEY_FILE, "w") as f:
-                f.write(session_key)
-            break
-        except pylast.WSError:
-            time.sleep(1)
-else:
-    session_key = open(SESSION_KEY_FILE).read()
-
-# print(session_key)
-network.session_key = session_key
+    network.session_key = session_key
+    return network
 
 def serialize(track):
     row = {}
@@ -89,23 +89,23 @@ def serialize(track):
     
     return row
 
-if not os.path.exists('last_processed_date.txt'):
-    with open('last_processed_date.txt', 'w') as f:
-        f.write('0')
+def get_data(network):
+    if not os.path.exists('last_processed_date.txt'):
+        with open('last_processed_date.txt', 'w') as f:
+            f.write('0')
 
-with open('last_processed_date.txt', 'r') as f:
-    last_processed_date = f.read().strip()
-    
-print('Fetching data since ', last_processed_date)
-data = network.get_user('DavidH3022').get_recent_tracks(limit=None, time_from=int(float(last_processed_date) // 1))
-if len(data) == 0:
-    print('No data found since this timestamp')
-    exit()
-
-# split into chunks of 1000 to avoid memory issues with the last being the leftover
-data = [data[i:i + 1000] for i in range(0, len(data), 1000)]
-
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="user-library-read"))
+    with open('last_processed_date.txt', 'r') as f:
+        last_processed_date = f.read().strip()
+        
+    print('Fetching data since ', last_processed_date)
+    data = network.get_user('DavidH3022').get_recent_tracks(limit=None, time_from=int(float(last_processed_date) // 1))
+    if len(data) == 0:
+        print('No data found since this timestamp')
+        return None
+        
+    # split into chunks of 1000 to avoid memory issues
+    data = [data[i:i + 1000] for i in range(0, len(data), 1000)]
+    return data
 
 def get_audio_features(spotify_id, track, artist):
     key, mode = get_songdata_key(track, artist)
@@ -189,12 +189,15 @@ def get_songdata_key(track_name, artist_name):
     
     return key, mode
 
-GENIUS_API_TOKEN = "8Rih_2HsWMaufDyf80Xo3IJVDxmKHHi1VW9nvA6Wt9y61pHg-1KwBX_NXQX3L2hW"
-genius = Genius(GENIUS_API_TOKEN, verbose=False)
-genius.response_format = 'plain'
+def init_genius_api():
+    GENIUS_API_TOKEN = os.getenv('GENIUS_API_TOKEN')
+    genius = Genius(GENIUS_API_TOKEN, verbose=False)
+    genius.response_format = 'plain'
+    
+    return genius
 
-max_tries = 3
-def search_genius_lyrics(song_title, artist_name):
+def search_genius_lyrics(song_title, artist_name, genius):
+    max_tries = 3
     song = None
     
     cur_try = 0
@@ -211,25 +214,7 @@ def search_genius_lyrics(song_title, artist_name):
             time.sleep(2)
     return song.lyrics if song else 'NA'
 
-client = chromadb.PersistentClient(path='chromadb_data')
-collection = client.get_collection(name='spotify_songs')
-model = sentence_transformers.SentenceTransformer('BAAI/bge-small-en')
-
-spotify_lock = Semaphore(1)
-def retry_spotify_call(fn):
-    retry_after = 2
-    while True:
-        try:
-            return fn()
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 429:
-                print(f"[Spotipy] Rate limit hit. Sleeping {retry_after}s...", flush=True)
-                time.sleep(retry_after)
-                retry_after *= 2
-            else:
-                raise
-
-def add_to_collection(item):
+def add_to_collection(item, sp, genius, collection, model, spotify_lock):
     row = serialize(item)
     
     # check if track already exists in collection
@@ -254,8 +239,7 @@ def add_to_collection(item):
     
     # search spotify for the track
     with spotify_lock:
-        results = retry_spotify_call(lambda: sp.search(q=f"track:{row['orig_title']} artist:{row['orig_artist']}", type='track', limit=1))
-    # results = sp.search(q=f"track:{row['orig_title']} artist:{row['orig_artist']}", type='track', limit=1)
+        results = sp.search(q=f"track:{row['orig_title']} artist:{row['orig_artist']}", type='track', limit=1)
     if results['tracks']['items']:
         sp_track = results['tracks']['items'][0]
         row['track_id'] = sp_track['id']
@@ -296,24 +280,48 @@ def add_to_collection(item):
         
         row = {**row, **audio_desc}
             
-        row['lyrics'] = search_genius_lyrics(row['track_name'], row['track_artist'])
+        row['lyrics'] = search_genius_lyrics(row['track_name'], row['track_artist'], genius)
         row['language'] = detect(row['lyrics']) if row['lyrics'] != 'NA' else 'NA'
         
         format_single(row, model, collection)
-        
-# data = [data[i:i + 1000] for i in range(0, len(data), 1000)]
 
-for chunk_num, chunk in enumerate(data):
-    print(f"Processing chunk {chunk_num + 1}/{len(data)}...")
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(add_to_collection, track) for track in chunk]
+def process_all_threaded(data, sp, genius, collection, model, spotify_lock):
+    for chunk_num, chunk in enumerate(data):
+        print(f"Processing chunk {chunk_num + 1}/{len(data)}...")
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(add_to_collection, track, sp, genius, collection, model, spotify_lock) for track in chunk]
 
-        for _ in tqdm(as_completed(futures), total=len(chunk), desc="Updating database"):
-            _.result()
-            
-    print('Finished, sleep for 10 seconds...')
-    time.sleep(10)
-        
-# create file to store the most recent timestamp processed
-with open('last_processed_date.txt', 'w') as f:
-    f.write(str(time.time()))
+            for _ in tqdm(as_completed(futures), total=len(chunk), desc="Updating database"):
+                _.result()
+                
+        print('Finished, sleep for 10 seconds...')
+        time.sleep(10)
+    
+def main():
+    # initialization
+    set_logger()
+    load_dotenv('spotvars.env')
+    network = init_lastfm_session()
+    genius = init_genius_api()
+    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="user-library-read"))
+    
+    client = chromadb.PersistentClient(path='chromadb_data')
+    collection = client.get_collection(name='spotify_songs')
+    model = sentence_transformers.SentenceTransformer('BAAI/bge-small-en')
+    
+    spotify_lock = Semaphore(1)
+    
+    # gather last.fm data
+    data = get_data(network)
+    if data == None:
+        return
+    
+    # process
+    process_all_threaded(data, sp, genius, collection, model, spotify_lock)
+    
+    # create file to store the most recent timestamp processed
+    with open('last_processed_date.txt', 'w') as f:
+        f.write(str(time.time()))
+    
+if __name__ == '__main__':
+    main()
