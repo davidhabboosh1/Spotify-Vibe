@@ -6,3 +6,4 @@ session_key
 .vscode
 __pycache__
 models/
+chromadb_data/

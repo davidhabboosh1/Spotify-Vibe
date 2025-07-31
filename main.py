@@ -7,6 +7,7 @@ import fetchspotifydata
 import os
 import subprocess
 import psutil
+import process_csv
 
 def get_model_size_gb(path):
   return os.path.getsize(path) / (1024 ** 3)
@@ -124,6 +125,10 @@ def filter_query(filters, collection, prompt_embedding):
 def main():
   # get user input
   user_txt = input('What would you like to know? ')
+  
+  # create database if nonexistent
+  if not os.path.exists('chromadb_data'):
+    process_csv.main()
   
   # get the database
   collection = initialize_collection()

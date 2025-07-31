@@ -8,6 +8,4 @@ Written by David Habboosh
 **How to run**
 * Download [Capybara](https://huggingface.co/TheBloke/Nous-Capybara-34B-GGUF/resolve/main/nous-capybara-34b.Q6_K.gguf?download=true) and [Mistral](https://huggingface.co/TheBloke/OpenHermes-2.5-Mistral-7B-GGUF/resolve/main/openhermes-2.5-mistral-7b.Q6_K.gguf?download=true) models and put them in the *models.example/* folder, then remove *.example* from the filename.
 * Replace all API keys in *spotvars.env.example* with your own, then remove *.example* from the filename.
-* Run process_csv.py to create the initial database.
-* Run fetchspotifydata.py to gather listening history. Run any time to update.
-* Run respondtoquery.py to talk to the chatbot!
+* Run main.py to talk to the chatbot! Initial run will take some time to gather entire listening history.
