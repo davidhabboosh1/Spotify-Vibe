@@ -2,8 +2,8 @@ blah.py
 spotvars.env
 last_processed_date.txt
 session_key
+chromadb_data
 .cache
 .vscode
 __pycache__
 models/
-chromadb_data/
