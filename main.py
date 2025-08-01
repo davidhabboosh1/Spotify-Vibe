@@ -128,7 +128,9 @@ def main():
   
   # create database if nonexistent
   if not os.path.exists('chromadb_data'):
+    print('\nFirst run, processing CSV...')
     process_csv.main()
+    print('Done.')
   
   # get the database
   collection = initialize_collection()
